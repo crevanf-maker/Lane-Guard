@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>LaneGuard AI</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <style>
+        :root { --primary: #e74c3c; --bg: #000000; --surface: #121212; --text: #ffffff; --success: #2ed573; }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg); color: var(--text); margin: 0; 
+            padding-bottom: env(safe-area-inset-bottom);
+            height: 100vh; overflow: hidden;
+            user-select: none; -webkit-tap-highlight-color: transparent; touch-action: none;
+        }
+        
+        #landing-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg); z-index: 1000; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+        }
+        .start-btn { 
+            background: var(--primary); color: white; border: none; padding: 22px 60px; 
+            border-radius: 12px; font-size: 1rem; font-weight: 800; cursor: pointer;
+            letter-spacing: 2px; text-transform: uppercase;
+        }
+
+        .header { 
+            padding: 55px 0 10px 0; /* Deep clearing for hardware cutouts */
+            background: var(--bg); text-align: center; 
+            color: var(--primary); font-weight: 900; font-size: 1.1rem;
+            letter-spacing: 4px; border-bottom: 1px solid #1a1a1a;
+        }
+        
+        .tab-content { padding: 10px; display: none; height: calc(100vh - 190px); overflow-y: auto; }
+        .tab-content.active { display: block; }
+
+        /* Camera expanded to 70% of the screen height */
+        .video-container { 
+            position: relative; 
+            width: 100%; 
+            max-width: 800px; 
+            margin: auto; 
+            border-radius: 24px; 
+            overflow: hidden; 
+            background: #080808;
+            height: 68vh; /* 70% target including some padding */
+            border: 1px solid #222;
+        }
+        
+        video { 
+            width: 100%; 
+            height: 100%;
+            display: block; 
+            object-fit: cover; 
+        }
+        
+        #perf-hud {
+            position: absolute; top: 12px; right: 12px;
+            background: rgba(0, 0, 0, 0.7); padding: 8px 12px;
+            border-radius: 10px; font-size: 0.6rem; color: var(--success);
+            font-family: 'Courier New', monospace; border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(5px);
+        }
+
+        #status-box { 
+            margin: 12px auto; width: 90%; padding: 15px; border-radius: 14px; 
+            border: 2px solid var(--success); font-weight: 900; text-align: center; 
+            background: rgba(46, 213, 115, 0.1); text-transform: uppercase; 
+            letter-spacing: 2px; font-size: 1rem;
+        }
+
+        .footer-nav { 
+            position: fixed; bottom: 0; width: 100%; 
+            height: 85px; background: #0a0a0a;
+            display: flex; border-top: 1px solid #1a1a1a;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: none; border: none; color: #444; }
+        .nav-btn.active { color: var(--primary); }
+        .nav-btn span:first-child { font-size: 1.4rem; margin-bottom: 2px; }
+        .nav-btn span:last-child { font-size: 0.6rem; font-weight: 800; letter-spacing: 1px; }
+
+        .history-card { 
+            background: var(--surface); margin-bottom: 10px; border-radius: 16px; 
+            display: flex; padding: 12px; align-items: center; border: 1px solid #222;
+        }
+        .history-card img { width: 75px; height: 55px; border-radius: 10px; margin-right: 15px; object-fit: cover; }
+    </style>
+</head>
+<body>
+
+    <div id="landing-screen">
+        <div style="font-size: 4rem; margin-bottom: 25px; filter: drop-shadow(0 0 15px var(--primary));">🛡️</div>
+        <button class="start-btn" onclick="initSystem()">Initialize Engine</button>
+    </div>
+
+    <div class="header">LANEGUARD</div>
+
+    <div id="live" class="tab-content active">
+        <div class="video-container" onclick="handleInteraction()">
+            <video id="webcam" autoplay playsinline muted></video>
+            <div id="perf-hud">
+                INF: <span id="hud-inf">0</span>ms<br>
+                NET: <span id="hud-net">0</span>ms<br>
+                FPS: <span id="hud-fps">0</span>
+            </div>
+        </div>
+        <div id="status-box" onclick="handleInteraction()">Scanning...</div>
+    </div>
+
+    <div id="history" class="tab-content">
+        <div id="gallery"></div>
+    </div>
+
+    <div id="settings" class="tab-content">
+        <h4 style="color: #444; text-transform: uppercase; letter-spacing: 1px;">Diagnostics</h4>
+        <div style="background: var(--surface); padding: 25px; border-radius: 20px; border: 1px solid #222;">
+            <p style="margin-top:0">Primary: YOLOv8_V1 (Stable)</p>
+            <p>Detection: Person/Vehicle/Pothole</p>
+            <button onclick="clearStorage()" style="color: var(--primary); background:rgba(231,76,60,0.1); border: 1px solid var(--primary); padding: 15px; border-radius: 10px; width: 100%; font-weight: 800; margin-top: 10px;">PURGE ARCHIVE</button>
+        </div>
+    </div>
+
+    <div class="footer-nav">
+        <button class="nav-btn active" onclick="showTab('live', this)"><span>📡</span><span>HUD</span></button>
+        <button class="nav-btn" onclick="showTab('history', this); fetchHistory()"><span>📜</span><span>LOGS</span></button>
+        <button class="nav-btn" onclick="showTab('settings', this)"><span>⚙️</span><span>SYS</span></button>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const statusBox = document.getElementById('status-box');
+        const hudInf = document.getElementById('hud-inf');
+        const hudNet = document.getElementById('hud-net');
+        const hudFps = document.getElementById('hud-fps');
+
+        let lastAlert = "";
+        let frameCount = 0;
+        let lastFpsUpdate = Date.now();
+
+        function handleInteraction() {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) elem.requestFullscreen().catch(()=>{});
+            else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+        }
+
+        async function initSystem() {
+            handleInteraction();
+            document.getElementById('landing-screen').style.display = 'none';
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment", frameRate: { ideal: 30 } } 
+                });
+                video.srcObject = stream;
+                process();
+            } catch (err) { console.error("Hardware link failed."); }
+        }
+
+        function showTab(tabId, btn) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            btn.classList.add('active');
+        }
+
+        async function process() {
+            if (document.getElementById('live').classList.contains('active') && video.readyState === 4) {
+                const startTime = Date.now();
+                const canvas = document.createElement('canvas');
+                const scale = 480 / video.videoHeight;
+                canvas.width = video.videoWidth * scale;
+                canvas.height = 480;
+                canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                try {
+                    const res = await fetch('/process_live_frame', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ image: canvas.toDataURL('image/jpeg', 0.4) })
+                    });
+                    const data = await res.json();
+                    
+                    const totalRtt = Date.now() - startTime;
+                    const serverInf = data.inf_ms || 0;
+                    hudInf.innerText = Math.round(serverInf);
+                    hudNet.innerText = Math.round(Math.max(0, totalRtt - serverInf));
+                    
+                    frameCount++;
+                    if (Date.now() - lastFpsUpdate >= 1000) {
+                        hudFps.innerText = frameCount;
+                        frameCount = 0;
+                        lastFpsUpdate = Date.now();
+                    }
+
+                    if (data.alert) {
+                        statusBox.innerText = data.message;
+                        statusBox.style.borderColor = "var(--primary)";
+                        statusBox.style.color = "var(--primary)";
+                        statusBox.style.background = "rgba(231, 76, 60, 0.1)";
+                        if (data.message !== lastAlert) {
+                            window.speechSynthesis.speak(new SpeechSynthesisUtterance(data.message));
+                            lastAlert = data.message;
+                        }
+                    } else {
+                        statusBox.innerText = "Scanning...";
+                        statusBox.style.borderColor = "var(--success)";
+                        statusBox.style.color = "var(--success)";
+                        statusBox.style.background = "rgba(46, 213, 115, 0.1)";
+                        lastAlert = "";
+                    }
+                } catch(e) {}
+            }
+            setTimeout(process, 100);
+        }
+
+        async function fetchHistory() {
+            const res = await fetch('/get_history');
+            const logs = await res.json();
+            document.getElementById('gallery').innerHTML = logs.map(item => `
+                <div class="history-card">
+                    <img src="${item.url}">
+                    <div><small style="color:#666">${item.time}</small><br><b style="font-size:0.9rem">${item.msg}</b></div>
+                </div>
+            `).join('');
+        }
+
+        async function clearStorage() {
+            await fetch('/delete_history', { method: 'POST' });
+            fetchHistory();
+        }
+    </script>
+</body>
+</html>
